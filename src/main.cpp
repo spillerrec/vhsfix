@@ -319,28 +319,27 @@ DumpPlane& blurFrames( DumpPlane& p ){
 
 
 void VideoFrame::initFrame( ffmpeg::AVFrame& newFrame ){
-	//TODO: very slow, optimize!
-	
-	//Luma
-	for( int iy=0; iy<getFrame()->height; iy++ ){
-		auto in = newFrame.getFrame()->data[0] + iy * newFrame.getFrame()->linesize[0];
-		auto out_l = getFrame()->data[0] + iy * getFrame()->linesize[0];
+	//Copy luma
+	auto luma_out = getPlane( 0 );
+	auto luma_in = newFrame.getPlane( 0 );
+	for( unsigned iy=0; iy<luma_in.size(); iy++ ){
+		auto in = luma_in[iy];
+		auto out_l = luma_out[iy];
 		
-		for( int ix=0; ix<getFrame()->width; ix++ )
-			out_l[  ix  ] = in[ ix*2 ];
+		for( unsigned ix=0; ix<in.size(); ix++ )
+			out_l[ix] = in[ix];
 	}
 	
-	//Chroma
-	for( int iy=0; iy<getFrame()->height/2; iy++ ){
-		auto in  = newFrame.getFrame()->data[0] + iy*2     * newFrame.getFrame()->linesize[0];
-		auto in2 = newFrame.getFrame()->data[0] + (iy*2+1) * newFrame.getFrame()->linesize[0];
+	//Blend the halved chroma to quartered chroma
+	for( int plane=1; plane<=2; plane++ ){
+		auto in_plane = newFrame.getPlane( plane );
+		auto out_plane = getPlane( plane );
 		
-		auto out_u = getFrame()->data[1] + iy * getFrame()->linesize[1];
-		auto out_v = getFrame()->data[2] + iy * getFrame()->linesize[2];
-		
-		for( int ix=0; ix<getFrame()->width/2; ix++ ){
-			out_u[ ix ] = ( in[ ix*4 + 1 ] + in2[ ix*4 + 1 ] ) / 2;
-			out_v[ ix ] = ( in[ ix*4 + 3 ] + in2[ ix*4 + 3 ] ) / 2;
+		for( unsigned iy=0; iy<in_plane.size(); iy += 2 ){
+			auto in = in_plane[iy], in2 = in_plane[iy+1];
+			auto out = out_plane[iy/2];
+			for( unsigned ix=0; ix<out.size(); ix++ )
+				out[ix] = (in[ix] + in2[ix]) / 2;
 		}
 	}
 }

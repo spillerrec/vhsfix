@@ -42,6 +42,7 @@ namespace ffmpeg{
 			uint32_t width() const{ return frame->width; }
 			uint32_t height() const{ return frame->height; }
 			
+			api::AVPixelFormat format() const{ return (api::AVPixelFormat)frame->format; }
 			api::AVFrame* getFrame(){ return frame; }
 			
 		public:
@@ -84,50 +85,73 @@ namespace ffmpeg{
 			
 			
 		public:
-			struct LineIt{
-				uint8_t* pos;
-				unsigned char spacing;
+			class ElemIt{
+				private:
+					uint8_t* pos;
+					unsigned char spacing;
 				
 				public:
-					LineIt( uint8_t* data, unsigned char spacing )
+					ElemIt( uint8_t* data, unsigned char spacing )
 						:	pos(data), spacing(spacing) { }
 					
-					LineIt& operator++(){ pos += spacing; return *this; }
-					bool operator==( const LineIt& it ) const{ return pos == it.pos; }
-					bool operator!=( const LineIt& it ) const{ return !( (*this) == it); }
-					
 					uint8_t& operator*() const{ return *pos; }
-					uint8_t* operator->() const{ return pos; }
-					uint8_t& operator[]( unsigned index ) const{ return pos[ index * spacing ]; }
+					ElemIt& operator++(){ pos += spacing; return *this; }
+					bool operator!=( const ElemIt& it ) const{ return pos != it.pos; }
 			};
 			
-			struct iterator{
-				LineIt line;
-				unsigned width;
-				unsigned line_width;
+			class LineIt{
+				private:
+					uint8_t* data;
+					unsigned width;
+					unsigned line_width;
+					unsigned char spacing;
 				
 				public:
-					iterator( uint8_t* data, unsigned width, unsigned line_width, unsigned char spacing )
-						:	line( data, spacing ), width(width), line_width(line_width) { }
+					LineIt( uint8_t* data, unsigned width, unsigned line_width, unsigned char spacing )
+						:	data(data), width(width), line_width(line_width), spacing(spacing) { }
 					
-					iterator& operator++(){ line.pos += line_width; return *this; }
-					bool operator==( const iterator& it ) const{ return line == it.line; }
-					bool operator!=( const iterator& it ) const{ return !( (*this) == it); }
+					LineIt& operator*(){ return *this; } //TODO: why doesn't const work here?
+					LineIt& operator++(){ data += line_width; return *this; }
+					bool operator!=( const LineIt& it ) const{ return data != it.data; }
+				
+					ElemIt begin(){ return ElemIt( data, spacing ); }
+					ElemIt end(){ return ElemIt( data + width*spacing, spacing ); }
 					
-					//TODO: ref?
-					iterator& operator*() { return *this; } //TODO: const?
-					//TODO: LineIt operator[]( unsigned index ) const{ return pos[ index * width ]; }
-					
-					LineIt begin(){ return line; }
-					LineIt end(){ return LineIt( &line[width], line.spacing ); }
+					unsigned size() const{ return width; }
+					uint8_t& operator[]( unsigned index ) const{ return data[ index*spacing ]; }
 			};
 			
-			iterator begin()
-				{ return iterator( frame->data[0], width(), frame->linesize[0], 1 ); }
+			class Plane{
+				private:
+					uint8_t* data;
+					unsigned width;
+					unsigned height;
+					unsigned line_width;
+					unsigned char spacing;
+					
+				public:
+					Plane( uint8_t* data, unsigned width, unsigned height, unsigned line_width, unsigned char spacing )
+						:	data(data), width(width), height(height), line_width(line_width), spacing(spacing) { }
+					
+					unsigned size() const{ return height; }
+					LineIt operator[]( unsigned index ){ return LineIt( data + index*line_width, width, line_width, spacing ); }
+					
+					LineIt begin(){ return (*this)[0]; }
+					LineIt end(){ return (*this)[height]; }
+			};
 			
-			iterator end(){
-				auto linesize = frame->linesize[0];
-				return iterator( frame->data[0] + height()*linesize, width(), linesize, 1 );
+			Plane getPlane( int plane ){
+				//Query information about current format
+				auto desc = av_pix_fmt_desc_get( format() );
+				auto comp = desc->comp[plane];
+				
+				//Calculate the information we need
+				auto offset = comp.offset_plus1 - 1;
+				auto spacing = comp.step_minus1 + 1;
+				auto real_width = width() >> ((plane > 0) ? desc->log2_chroma_w : 0);
+				auto real_height = height() >> ((plane > 0) ? desc->log2_chroma_h : 0);
+				
+				return Plane( frame->data[comp.plane]+offset, real_width, real_height, frame->linesize[comp.plane], spacing );
 			}
 	};
 
