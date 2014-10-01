@@ -17,15 +17,9 @@
 
 #include "dump/DumpPlane.hpp"
 
+#include "ffmpeg.hpp"
 
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/mathematics.h>
-
-#include <libavutil/opt.h>
-#include <libavutil/imgutils.h>
-}
+using namespace ffmpeg::api;
 
 
 #include <QCoreApplication>
@@ -51,51 +45,17 @@ const char* media_type_to_text( AVMediaType t ){
 }
 
 
-class VideoFrame{
+class VideoFrame : public ffmpeg::AVFrame{
 	private:
-		AVFrame *frame;
 		vector<uint8_t> scaled;
 		
 	public:
-		VideoFrame() : frame( av_frame_alloc() ) {
-			if( frame ){
-				frame->format = AV_PIX_FMT_YUV420P;
-				frame->width = 720;
-				frame->height = 576;
-				
-				//TODO: check, and throw on both errors
-				av_image_alloc(
-						frame->data
-					,	frame->linesize
-					,	frame->width
-					,	frame->height
-					,	AV_PIX_FMT_YUV420P
-					,	32
-					);
-			}
-			else
-				cout << "Could not init frame!" << endl;
-		}
+		VideoFrame() : ffmpeg::AVFrame( 720, 576 ) { }
 		
-		~VideoFrame(){ av_frame_free( &frame ); }
-		
-		void initFrame( AVFrame *newFrame );
+		void initFrame( ffmpeg::AVFrame& newFrame );
 		void process();
 		
-		AVFrame* getFrame(){ return frame; }
-		
-		uint32_t getWidth() const{ return frame->width; }
-		uint32_t getHeight() const{ return frame->height; }
 		uint8_t getDepth() const{ return 8; }
-		
-		
-		const uint8_t* constScanline( unsigned y ) const {
-			return (const uint8_t*)frame->data[0] + y * frame->linesize[0];
-		}
-
-		uint8_t* scanline( unsigned y ) {
-			return frame->data[0] + y * frame->linesize[0];
-		}
 };
 
 class VideoLine{
@@ -106,7 +66,7 @@ class VideoLine{
 	public:
 		VideoLine( VideoFrame& frame, unsigned y ){
 			data = frame.scanline( y );
-			width = frame.getWidth();
+			width = frame.width();
 		}
 		
 		VideoLine( vector<uint8_t>& buffer ){
@@ -223,8 +183,8 @@ unsigned diffLines( const VideoFrame& p, unsigned y, int dx, unsigned y2 ){
 	auto row2 = p.constScanline( y2 );
 	
 	unsigned sum=0;
-	for( unsigned ix=0; ix<p.getWidth(); ix++ ){
-		unsigned pos = unsigned(ix+dx+p.getWidth()) % p.getWidth();
+	for( unsigned ix=0; ix<p.width(); ix++ ){
+		unsigned pos = unsigned(ix+dx+p.width()) % p.width();
 		auto error = abs( (int)row1[ix] - (int)row2[pos] );
 		sum += error * error;
 	}
@@ -321,7 +281,7 @@ void moveLine( vector<uint8_t>& p, vector<uint8_t>& out, int dx ){
 void writeLine( const vector<uint8_t>& p, VideoFrame& out, unsigned y, int dx ){
 	auto row2 = out.scanline( y );
 	
-	for( unsigned ix=0; ix<out.getWidth(); ix++ ){
+	for( unsigned ix=0; ix<out.width(); ix++ ){
 		unsigned pos = unsigned(ix+dx+p.size()) % p.size();
 		row2[ix] = p[pos];
 	}
@@ -330,7 +290,7 @@ void swapLine( const VideoFrame& p, VideoFrame& out, unsigned y, unsigned y_out 
 	auto row1 = p.constScanline( y );
 	auto row2 = out.scanline( y_out );
 	
-	for( unsigned ix=0; ix<p.getWidth(); ix++ )
+	for( unsigned ix=0; ix<p.width(); ix++ )
 		row2[ix] = row1[ix];
 }
 /* DumpPlane separateFrames( const DumpPlane& p ){
@@ -358,27 +318,27 @@ DumpPlane& blurFrames( DumpPlane& p ){
 }
 
 
-void VideoFrame::initFrame( AVFrame *newFrame ){
+void VideoFrame::initFrame( ffmpeg::AVFrame& newFrame ){
 	//TODO: very slow, optimize!
 	
 	//Luma
-	for( int iy=0; iy<frame->height; iy++ ){
-		auto in = newFrame->data[0] + iy * newFrame->linesize[0];
-		auto out_l = frame->data[0] + iy * frame->linesize[0];
+	for( int iy=0; iy<getFrame()->height; iy++ ){
+		auto in = newFrame.getFrame()->data[0] + iy * newFrame.getFrame()->linesize[0];
+		auto out_l = getFrame()->data[0] + iy * getFrame()->linesize[0];
 		
-		for( int ix=0; ix<frame->width; ix++ )
+		for( int ix=0; ix<getFrame()->width; ix++ )
 			out_l[  ix  ] = in[ ix*2 ];
 	}
 	
 	//Chroma
-	for( int iy=0; iy<frame->height/2; iy++ ){
-		auto in  = newFrame->data[0] + iy*2     * newFrame->linesize[0];
-		auto in2 = newFrame->data[0] + (iy*2+1) * newFrame->linesize[0];
+	for( int iy=0; iy<getFrame()->height/2; iy++ ){
+		auto in  = newFrame.getFrame()->data[0] + iy*2     * newFrame.getFrame()->linesize[0];
+		auto in2 = newFrame.getFrame()->data[0] + (iy*2+1) * newFrame.getFrame()->linesize[0];
 		
-		auto out_u = frame->data[1] + iy * frame->linesize[1];
-		auto out_v = frame->data[2] + iy * frame->linesize[2];
+		auto out_u = getFrame()->data[1] + iy * getFrame()->linesize[1];
+		auto out_v = getFrame()->data[2] + iy * getFrame()->linesize[2];
 		
-		for( int ix=0; ix<frame->width/2; ix++ ){
+		for( int ix=0; ix<getFrame()->width/2; ix++ ){
 			out_u[ ix ] = ( in[ ix*4 + 1 ] + in2[ ix*4 + 1 ] ) / 2;
 			out_v[ ix ] = ( in[ ix*4 + 3 ] + in2[ ix*4 + 3 ] ) / 2;
 		}
@@ -386,8 +346,6 @@ void VideoFrame::initFrame( AVFrame *newFrame ){
 }
 
 void VideoFrame::process(){
-	//cout << "Processing of frames not yet implemented!" << endl;
-	
 	double scale_factor = 5;
 	auto top = scaleLine( *this, 0, scale_factor );
 	auto bottom = top;
@@ -424,7 +382,7 @@ void VideoFrame::process(){
 	
 	//* Lines in bottom fix
 	VideoLine base( *this, 576-8-2 );
-	for( unsigned iy=576-8; iy<getHeight(); iy++ ){
+	for( unsigned iy=576-8; iy<height(); iy++ ){
 		double best_scale = 1.0;
 		int best_x = 0;
 		unsigned best_val = -1;
@@ -623,14 +581,14 @@ bool VideoFile::seek( int64_t byte ){
 
 void VideoFile::run( VideoEncode& encode ){
 	VideoFrame output;
-	AVFrame *frame = av_frame_alloc();
+	ffmpeg::AVFrame frame( av_frame_alloc() );
 	
 	AVPacket packet;
 	int frame_done;
 	int current = 0;
 	while( av_read_frame( format_context, &packet ) >= 0 ){
 		if( packet.stream_index == stream_index ){
-			avcodec_decode_video2( codec_context, frame, &frame_done, &packet );
+			avcodec_decode_video2( codec_context, frame.getFrame(), &frame_done, &packet );
 			
 			if( frame_done ){
 			//	cout << "start frame" << endl;
