@@ -15,43 +15,45 @@
 	along with vhsfix.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#ifndef FFMPEG_HPP
+#define FFMPEG_HPP
+
 #include <stdint.h>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
+extern "C" {
+	#include <libavcodec/avcodec.h>
+	#include <libavformat/avformat.h>
+	#include <libavutil/mathematics.h>
+
+	#include <libavutil/opt.h>
+	#include <libavutil/imgutils.h>
+}
+
 namespace ffmpeg{
-	namespace api{
-		using namespace std;
-		extern "C" {
-			#include <libavcodec/avcodec.h>
-			#include <libavformat/avformat.h>
-			#include <libavutil/mathematics.h>
-
-			#include <libavutil/opt.h>
-			#include <libavutil/imgutils.h>
-		}
-	}
 
 
-	class AVFrame{
+	class Frame{
 		private:
-			api::AVFrame *frame;
+			AVFrame *frame;
 			
 		//Basic ffmpeg properties
 		public:
 			uint32_t width() const{ return frame->width; }
 			uint32_t height() const{ return frame->height; }
 			
-			api::AVPixelFormat format() const{ return (api::AVPixelFormat)frame->format; }
-			api::AVFrame* getFrame(){ return frame; }
+			AVPixelFormat format() const{ return (AVPixelFormat)frame->format; }
+			AVFrame* getFrame(){ return frame; }
 			
 		public:
 			///Gives ownership
-			AVFrame( api::AVFrame *frame ) : frame(frame) { } //TODO: throw if nullptr?
+			Frame( AVFrame *frame ) : frame(frame) { } //TODO: throw if nullptr?
 			
 			///Initialize with image data
-			AVFrame( unsigned width, unsigned height, api::AVPixelFormat format = api::AV_PIX_FMT_YUV420P )
-				:	frame( api::av_frame_alloc() ) {
+			Frame( unsigned width, unsigned height, AVPixelFormat format = AV_PIX_FMT_YUV420P )
+				:	frame( av_frame_alloc() ) {
 				
 				if( frame ){
 					frame->format = format;
@@ -59,7 +61,7 @@ namespace ffmpeg{
 					frame->height = height;
 					
 					//TODO: check, and throw on both errors
-					api::av_image_alloc(
+					av_image_alloc(
 							frame->data
 						,	frame->linesize
 						,	frame->width
@@ -72,7 +74,7 @@ namespace ffmpeg{
 			
 			//TODO: add move constructor
 			
-			~AVFrame(){ api::av_frame_free( &frame ); }
+			~Frame(){ av_frame_free( &frame ); }
 			
 			
 			const uint8_t* constScanline( unsigned y ) const {
@@ -158,4 +160,4 @@ namespace ffmpeg{
 
 }
 
-
+#endif
