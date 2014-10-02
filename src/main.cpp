@@ -178,21 +178,7 @@ vector<uint8_t> scaleLineDown( vector<uint8_t>& p, double x_scale ){
 	return scaleLineDown( line, x_scale );
 }
 
-unsigned diffLines( const VideoFrame& p, unsigned y, int dx, unsigned y2 ){
-	auto row1 = p.constScanline( y );
-	auto row2 = p.constScanline( y2 );
-	
-	unsigned sum=0;
-	for( unsigned ix=0; ix<p.width(); ix++ ){
-		unsigned pos = unsigned(ix+dx+p.width()) % p.width();
-		auto error = abs( (int)row1[ix] - (int)row2[pos] );
-		sum += error * error;
-	}
-	
-	return sum;
-}
-
-unsigned diffLinesEx( const VideoLine& p1, const VideoLine& p2, int dx ){
+unsigned diffLines( const VideoLine& p1, const VideoLine& p2, int dx ){
 	unsigned sum=0;
 	for( unsigned ix=0; ix<p1.getWidth(); ix++ ){
 		unsigned pos = unsigned(ix+dx+p2.getWidth()) % p2.getWidth();
@@ -206,7 +192,7 @@ unsigned diffLinesEx( const VideoLine& p1, const VideoLine& p2, int dx ){
 
 pair<unsigned,int> recursiveDiff( const VideoLine& p1, const VideoLine& p2, int left, int right ){
 	if( right - left <= 1 )
-		return make_pair( diffLinesEx( p1, p2, left ), left );
+		return make_pair( diffLines( p1, p2, left ), left );
 	else{
 	//	cout << "In: " << left << " - " << right << endl;
 		auto middle = (right - left) / 2 + left;
@@ -214,8 +200,8 @@ pair<unsigned,int> recursiveDiff( const VideoLine& p1, const VideoLine& p2, int 
 		auto newRight = (right - middle) / 2 + middle;
 		
 	//	cout << "Out: " << newLeft << " - " << newRight << endl;
-		auto leftVal  = diffLinesEx( p1, p2, newLeft );
-		auto rightVal = diffLinesEx( p1, p2, newRight );
+		auto leftVal  = diffLines( p1, p2, newLeft );
+		auto rightVal = diffLines( p1, p2, newRight );
 		
 		if( leftVal < rightVal )
 			return recursiveDiff( p1, p2, left, middle );
@@ -231,7 +217,7 @@ bool bestDiffEx( const VideoLine& p1, const VideoLine& p2, int& best_x2, unsigne
 	unsigned best = -1;
 	int best_x = -1;
 	for( int dx=-amount; dx<=amount; dx++ ){
-		auto current = diffLinesEx( p1, p2, dx );
+		auto current = diffLines( p1, p2, dx );
 		if( current < best ){
 			best = current;
 			best_x = dx;
@@ -357,7 +343,7 @@ void VideoFrame::process(){
 		bottom = scaleLine( *this, iy+2, scale_factor );
 		auto middle = scaleLine( *this, iy+1, scale_factor );
 		
-	//	unsigned base = diffLinesEx( middle, top, 0 ); // 1  0
+	//	unsigned base = diffLines( middle, top, 0 ); // 1  0
 		
 		int best_x = bestDiff( top, middle, 10 ); // 0  1
 		int best_x2 = bestDiff( bottom, middle, 10 ); // 2  1
@@ -676,7 +662,7 @@ DumpPlane scalePlaneDown( const DumpPlane& p, double x_scale ){
 }
 
 int showHelp( int return_code=0 ){
-	cout << "fix_video filename" << endl;
+	cout << "vhsfix filename unused" << endl;
 	
 	return return_code;
 }
@@ -705,73 +691,6 @@ int main(int argc, char *argv[]){
 	}
 	
 	file.run( encode );
-	
-/*	
-	QFile file( a.arguments()[1] );
-	file.open( QIODevice::ReadOnly );
-	
-	DumpPlane p;
-	p.read( file );
-	
-	vector<DumpPlane> scaled;
-	scaled.push_back( p );
-	for( double i = 1.0001; i<1.1; i += 0.001 )
-		scaled.emplace_back( scalePlane( p, i ) );
-	cout << "Scaling done" << endl;
-	
-	DumpPlane out2( separateFrames( p ) );
-	DumpPlane out3 = scalePlaneDown( scalePlane( p, 2.0 ), 2.0 );
-	
-	p = scalePlane( p, 10.0 );
-	DumpPlane out( p );
-	
-	for( unsigned iy=0; iy<576-8; iy+=2 ){
-		unsigned base = diffLines( p, iy+1, 0, iy );
-		
-		int best_x = bestDiff( p, iy, iy+1, 100 );
-		int best_x2 = bestDiff( p, iy+2, iy+1, 100 );
-		if( iy == 0 )
-			best_x = best_x2;
-		if( iy == 576-8-2 )
-			best_x2 = best_x;
-		
-		cout << "Best dx (" << iy << "): " << best_x << " - " << best_x2 << endl;
-		
-		moveLine( p, out, iy+1, (best_x+best_x2)/2 );
-	}
-	
-	p = scalePlaneDown( p, 10.0 );
-	out = scalePlaneDown( out, 10.0 );
-	
-	for( unsigned iy=576-8; iy<p.getHeight(); iy++ ){
-		unsigned best_scale = 0;
-		int best_x = 0;
-		unsigned best_val = -1;
-		for( unsigned iz=0; iz<scaled.size(); iz++ ){
-			if( bestDiffEx( p, scaled[iz], 576-8-2, iy, best_x, best_val, 200 ) )
-		//	if( bestDiffEx( out, scaled[iz], iy, iy-1, best_x, best_val ) )
-				best_scale = iz;
-		}
-		moveLine( scaled[best_scale], out, iy, best_x );
-	}
-	
-	QFile file_out( "out.dump" );
-	file_out.open( QIODevice::WriteOnly );
-	out.write( file_out );
-	
-	QFile file_out2( "out_swap.dump" );
-	file_out2.open( QIODevice::WriteOnly );
-	out2.write( file_out2 );
-	
-	DumpPlane in1, in2;
-	in1.read( file );
-	in2.read( file );
-	blurFrames( in1 ).write( file_out );
-	separateFrames( in1 ).write( file_out2 );
-	blurFrames( in2 ).write( file_out );
-	separateFrames( in2 ).write( file_out2 );
-	
-//*/
 	
 	return 0;
 }
