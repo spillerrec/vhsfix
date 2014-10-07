@@ -242,17 +242,7 @@ void swapLine( const VideoFrame& p, VideoFrame& out, unsigned y, unsigned y_out 
 	for( unsigned ix=0; ix<p.width(); ix++ )
 		row2[ix] = row1[ix];
 }
-/* DumpPlane separateFrames( const DumpPlane& p ){
-	DumpPlane out( p );
-	
-	for( unsigned iy=0; iy<p.getHeight(); iy+=2 )
-		swapLine( p, out, iy, iy/2 );
-	for( unsigned iy=1; iy<p.getHeight(); iy+=2 )
-		swapLine( p, out, iy, iy/2+p.getHeight()/2 );
-	
-	return out;
-}
-*/
+
 DumpPlane& blurFrames( DumpPlane& p ){
 	for( unsigned iy=0; iy<p.getHeight(); iy+=2 ){
 		auto row1 = p.scanline( iy );
@@ -294,6 +284,7 @@ void VideoFrame::initFrame( ffmpeg::Frame& newFrame ){
 }
 
 void VideoFrame::process(){
+//	separateFrames();
 	fixFrameAlignment();
 	fixBottom();
 	//fixInterlazing(); //Not yet valid solution
@@ -357,5 +348,27 @@ void VideoFrame::fixInterlazing(){
 		for( unsigned ix=0; ix<720; ix++ )
 			top[ix] = bottom[ix] = (top[ix] + bottom[ix]) / 2;
 	}
+}
+
+void VideoFrame::separateFrames(){
+	Frame copy( *this );
+	
+	for( int p=0; p<3; p++ ){
+		auto in = copy.getPlane( p );
+		auto out = getPlane( p );
+		
+		for( unsigned iy=0; iy<in.getHeight(); iy+=2 ){
+			for( unsigned ix=0; ix<in.getWidth(); ix++ )
+				out[iy/2][ix] = in[iy][ix];
+			for( unsigned ix=0; ix<in.getWidth(); ix++ )
+				out[iy/2+in.getHeight()/2][ix] = in[iy+1][ix];
+		}
+	}
+	/*
+	for( unsigned iy=0; iy<p.getHeight(); iy+=2 )
+		swapLine( p, out, iy, iy/2 );
+	for( unsigned iy=1; iy<p.getHeight(); iy+=2 )
+		swapLine( p, out, iy, iy/2+p.getHeight()/2 );
+	*/
 }
 

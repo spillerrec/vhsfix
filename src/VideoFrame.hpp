@@ -37,6 +37,8 @@ class VideoFrame : public ffmpeg::Frame{
 		void fixBottom();
 		void fixInterlazing();
 		
+		void separateFrames();
+		
 		uint8_t getDepth() const{ return 8; }
 };
 

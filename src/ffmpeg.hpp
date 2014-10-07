@@ -29,6 +29,7 @@ extern "C" {
 	#include <libavutil/mathematics.h>
 
 	#include <libavutil/opt.h>
+	#include <libavutil/frame.h>
 	#include <libavutil/imgutils.h>
 }
 
@@ -70,6 +71,11 @@ namespace ffmpeg{
 						,	32
 						);
 				}
+			}
+			
+			Frame( const Frame& other )
+				: Frame( other.width(), other.height(), other.format() ) {
+				av_frame_copy( frame, other.frame ); //TODO: throw on return < 0
 			}
 			
 			//TODO: add move constructor
@@ -140,6 +146,9 @@ namespace ffmpeg{
 					
 					LineIt begin(){ return (*this)[0]; }
 					LineIt end(){ return (*this)[height]; }
+					
+					unsigned getWidth() const{ return width; }
+					unsigned getHeight() const{ return height; }
 			};
 			
 			Plane getPlane( int plane ){
