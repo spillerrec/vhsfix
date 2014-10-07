@@ -33,6 +33,10 @@ class VideoFrame : public ffmpeg::Frame{
 		void initFrame( ffmpeg::Frame& newFrame );
 		void process();
 		
+		void fixFrameAlignment();
+		void fixBottom();
+		void fixInterlazing();
+		
 		uint8_t getDepth() const{ return 8; }
 };
 

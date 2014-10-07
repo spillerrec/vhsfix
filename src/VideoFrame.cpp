@@ -294,11 +294,16 @@ void VideoFrame::initFrame( ffmpeg::Frame& newFrame ){
 }
 
 void VideoFrame::process(){
+	fixFrameAlignment();
+	fixBottom();
+	//fixInterlazing(); //Not yet valid solution
+}
+
+void VideoFrame::fixFrameAlignment(){
 	double scale_factor = 5;
 	auto top = scaleLine( *this, 0, scale_factor );
 	auto bottom = top;
 	
-	/*
 	//TODO: upscale 10x
 	for( unsigned iy=0; iy<576-8; iy+=2 ){
 		//Prepare new lines
@@ -308,8 +313,8 @@ void VideoFrame::process(){
 		
 	//	unsigned base = diffLines( middle, top, 0 ); // 1  0
 		
-		int best_x = bestDiff( top, middle, 10 ); // 0  1
-		int best_x2 = bestDiff( bottom, middle, 10 ); // 2  1
+		int best_x = bestDiff( top, middle, 2*scale_factor ); // 0  1
+		int best_x2 = bestDiff( bottom, middle, 2*scale_factor ); // 2  1
 		if( iy == 0 )
 			best_x = best_x2;
 		if( iy == 576-8-2 )
@@ -324,10 +329,8 @@ void VideoFrame::process(){
 		//moveLine( p, out, iy+1, (best_x+best_x2)/2 );
 		//TODO: downscale again
 	}
-	
-	//*/
-	
-	
+}
+void VideoFrame::fixBottom(){
 	//* Lines in bottom fix
 	VideoLine base( *this, 576-8-2 );
 	for( unsigned iy=576-8; iy<height(); iy++ ){
@@ -345,19 +348,14 @@ void VideoFrame::process(){
 	//	cout << "scale: " << best_scale << endl;
 	//	cout << "best_x: " << best_x << endl;
 	}
-	
-	//*/
-	
-	/*/ Blend
-	
+}
+
+void VideoFrame::fixInterlazing(){
+	//For now, just blur them together, essentially reducing the resolution...
 	for( unsigned iy=0; iy<576-8; iy+=2 ){
 		VideoLine top( *this, iy ), bottom( *this, iy+1 );
 		for( unsigned ix=0; ix<720; ix++ )
 			top[ix] = bottom[ix] = (top[ix] + bottom[ix]) / 2;
 	}
-	
-	//*/
 }
-
-
 
